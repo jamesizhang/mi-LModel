@@ -87,7 +87,8 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 		param.Updated = time.Now() // 更新创建时间
 	}
 	mu.Unlock()
-	if latestID == "" {
+	_, exists = params[latestID]
+	if !exists {
 		latestID = req.ID
 	} else if params[latestID].Created.Before(params[req.ID].Created) {
 		latestID = req.ID
