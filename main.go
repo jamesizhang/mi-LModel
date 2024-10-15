@@ -12,6 +12,7 @@ func main() {
 
 	go net.CheckExpiredParams() // 启动定时任务
 	http.HandleFunc("/ask", net.AskHandler)
+	http.HandleFunc("/getLatestOrder", net.GetLatestOrderHandler)
 	err := http.ListenAndServe(":9898", nil)
 	if err != nil {
 		return

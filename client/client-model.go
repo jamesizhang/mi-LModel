@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"errors"
 	"log"
 	"mi-LModel/util"
+	"strings"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -11,6 +13,13 @@ import (
 
 type ClientStuct struct {
 	*openai.Client
+}
+
+type GetLastInfoResp struct {
+	OrderTime        string
+	StartLocation    string
+	EndLocation      string
+	carLicenseNumber string
 }
 
 var Client *ClientStuct
@@ -53,4 +62,23 @@ func (cli *ClientStuct) Ask(ctx context.Context, question string, param *openai.
 	log.Printf("%v", resp)
 	param.Messages.Value = append(param.Messages.Value, openai.AssistantMessage(resp))
 	return
+}
+
+func (cli *ClientStuct) GetLastInfo(ctx context.Context, param *openai.ChatCompletionNewParams) (GetLastInfoResp, error) {
+	question := "请按照以下格式给出用车具体时间，打车起点，打车终点，车牌号。以-进行分隔" +
+		"例子：2024年10月15日下午2点10分-回龙观地铁站-万科天空之城-京A123456。其他并不需要多说！其他并不需要多说！因为我要利用-进行分割"
+	response := cli.Ask(ctx, question, param)
+	// 按照'-'分割字符串
+	parts := strings.Split(response, "-")
+	if len(parts) != 4 {
+		return GetLastInfoResp{}, errors.New("大模型响应格式错误，应包含四个由'-'分隔的部分")
+	}
+	// 创建并填充GetLastInfoResp结构体
+	infoResp := GetLastInfoResp{
+		OrderTime:        parts[0],
+		StartLocation:    parts[1],
+		EndLocation:      parts[2],
+		carLicenseNumber: parts[3],
+	}
+	return infoResp, nil
 }

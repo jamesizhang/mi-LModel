@@ -20,6 +20,7 @@ type Param struct {
 type ParamVal struct {
 	paramToModel *openai.ChatCompletionNewParams
 	Created      time.Time
+	Updated      time.Time
 }
 
 type ServerResponse struct {
@@ -32,6 +33,7 @@ var (
 	checkTime = 60 * time.Second
 	ctx       = context.Background()
 	cli       = client.Client
+	latestID  string
 )
 
 func CheckExpiredParams() {
@@ -40,7 +42,7 @@ func CheckExpiredParams() {
 		now := time.Now()
 		mu.Lock()
 		for id, param := range params {
-			if now.Sub(param.Created) > 5*time.Minute {
+			if now.Sub(param.Updated) > 30*time.Minute {
 				delete(params, id)
 			}
 		}
@@ -79,12 +81,17 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	param, exists := params[req.ID]
 	if !exists {
-		param = &ParamVal{paramToModel: client.DidiChatCompletionNewParams(), Created: time.Now()}
+		param = &ParamVal{paramToModel: client.DidiChatCompletionNewParams(), Created: time.Now(), Updated: time.Now()}
 		params[req.ID] = param
 	} else {
-		param.Created = time.Now() // 更新创建时间
+		param.Updated = time.Now() // 更新创建时间
 	}
 	mu.Unlock()
+	if latestID == "" {
+		latestID = req.ID
+	} else if params[latestID].Created.Before(params[req.ID].Created) {
+		latestID = req.ID
+	}
 
 	//调用cli.Ask的实际逻辑
 	answer := cli.Ask(ctx, req.Question, param.paramToModel)
@@ -92,6 +99,30 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 	resp := ServerResponse{Response: answer}
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		return
+	}
+}
+
+func GetLatestOrderHandler(w http.ResponseWriter, r *http.Request) {
+	print(r)
+	if latestID == "" {
+		http.Error(w, "该用户没有打车记录", http.StatusBadRequest)
+		return
+	}
+	pararNeed2Model, exist := params[latestID]
+	if !exist {
+		http.Error(w, "打车记录已经过期", http.StatusBadRequest)
+		return
+	}
+	//调用cli.GetLastInfo
+	answer, err := cli.GetLastInfo(ctx, pararNeed2Model.paramToModel)
+	if err != nil {
+		http.Error(w, "服务器内部错误", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(answer)
 	if err != nil {
 		return
 	}
