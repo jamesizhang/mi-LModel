@@ -8,6 +8,7 @@ import (
 	"io"
 	"mi-LModel/client"
 	"net/http"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -29,12 +30,13 @@ type ServerResponse struct {
 }
 
 var (
-	params    = make(map[string]*ParamVal)
-	mu        sync.Mutex
-	checkTime = 60 * time.Second
-	ctx       = context.Background()
-	cli       = client.Client
-	latestID  string
+	params      = make(map[string]*ParamVal)
+	mu          sync.Mutex
+	checkTime   = 60 * time.Second
+	ctx         = context.Background()
+	cli         = client.Client
+	latestID    string
+	xiaoDisplay bool
 )
 
 func CheckExpiredParams() {
@@ -95,12 +97,35 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 		latestID = req.ID
 	}
 	if strings.Contains(req.Question, "天气") {
-		weather := client.FetchAndDisplayWeather("9dd8b5a4f0425cab0d43c44212e464a7", "北京昌平区")
+		weather := client.FetchAndDisplayWeather("北京昌平区", "9dd8b5a4f0425cab0d43c44212e464a7")
 		req.Question = fmt.Sprintf("这是用户关于天气的询问：%s，这是查询国家气象局的结果：%s,跟进天气状况引导用户打车出行！", req.Question, weather)
 	}
 
 	//调用cli.Ask的实际逻辑
 	answer := cli.Ask(ctx, req.Question, param.paramToModel)
+
+	if checkSuccess(answer) {
+		if !xiaoDisplay {
+			xiaoDisplay = true
+			err := startApp("com.nylo.android", ".MainActivity")
+			if err != nil {
+				//return
+			} else {
+				fmt.Printf("%s\n", "调用成功")
+			}
+		} else {
+			err := stopApp("com.nylo.android")
+			if err != nil {
+				//return
+			}
+			err = startApp("com.nylo.android", "MainActivity")
+			if err != nil {
+				//return
+			} else {
+				fmt.Printf("%s\n", "调用成功")
+			}
+		}
+	}
 
 	resp := ServerResponse{Response: answer}
 	w.Header().Set("Content-Type", "application/json")
@@ -108,6 +133,33 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+}
+
+// 检查answer字符串是否包含特定的成功标志
+func checkSuccess(answer string) bool {
+	return strings.Contains(answer, "预约成功") ||
+		strings.Contains(answer, "叫车成功") ||
+		strings.Contains(answer, "成功")
+}
+
+// 执行ADB命令来停止指定的应用
+func stopApp(packageName string) error {
+	cmd := exec.Command("adb", "shell", "am", "force-stop", packageName)
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("执行ADB命令失败: %v", err)
+	}
+	return nil
+}
+
+// 执行ADB命令来启动指定的应用
+func startApp(packageName, className string) error {
+	cmd := exec.Command("adb", "shell", "am", "start", "-n", packageName+"/"+className)
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("执行ADB命令失败: %v", err)
+	}
+	return nil
 }
 
 func GetLatestOrderHandler(w http.ResponseWriter, r *http.Request) {
