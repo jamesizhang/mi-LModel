@@ -8,6 +8,7 @@ import (
 	"io"
 	"mi-LModel/client"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -92,6 +93,10 @@ func AskHandler(w http.ResponseWriter, r *http.Request) {
 		latestID = req.ID
 	} else if params[latestID].Created.Before(params[req.ID].Created) {
 		latestID = req.ID
+	}
+	if strings.Contains(req.Question, "天气") {
+		weather := client.FetchAndDisplayWeather("9dd8b5a4f0425cab0d43c44212e464a7", "北京昌平区")
+		req.Question = fmt.Sprintf("这是用户关于天气的询问：%s，这是查询国家气象局的结果：%s,跟进天气状况引导用户打车出行！", req.Question, weather)
 	}
 
 	//调用cli.Ask的实际逻辑
